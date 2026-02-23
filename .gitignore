@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Environment variables (secrets!)
+.env
+.env.*
+
+# Database
+*.db
+*.sqlite3
+
+# Chroma vector DB
+chroma_db/
+
+# Uploaded documents
+uploads/
+
+# Temporary audio files (TTS)
+*.mp3
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
