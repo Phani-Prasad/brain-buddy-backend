@@ -38,7 +38,7 @@ app = FastAPI(title="Brain Buddy", version="1.0.0", lifespan=lifespan)
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000","https://brain-buddy-frontend-16rnys8up-phanitprasad-gmailcoms-projects.vercel.app/"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
