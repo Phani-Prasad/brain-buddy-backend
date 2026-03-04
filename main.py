@@ -358,50 +358,139 @@ When a student asks a question:
 @app.post("/api/explain")
 async def explain_topic(request: ExplanationRequest):
     """Get detailed explanation of a topic"""
-    
+
     if not client.api_key or client.api_key == "":
         raise HTTPException(status_code=500, detail="OpenAI API key not configured. Please add your API key to the .env file.")
-    
+
     detail_prompts = {
         "simple": "Explain this in very simple terms, as if teaching a beginner. Use analogies and everyday examples.",
         "medium": "Provide a clear explanation with examples and key points.",
         "detailed": "Provide a comprehensive, in-depth explanation with examples, applications, and advanced concepts."
     }
-    
+
     lang_instruction = ""
     if request.language == "te":
         lang_instruction = "IMPORTANT: Provide the entire explanation in Telugu language (తెలుగు). Use Telugu script.\n\n"
-    
+
     prompt = f"""{lang_instruction}{content_safety.SAFETY_GUARDRAIL}
 Explain the topic: {request.topic}
 
 Grade Level: {request.grade_level}
 Detail Level: {detail_prompts[request.detail_level]}
 
-Structure your explanation as:
-1. Simple Definition
-2. Key Concepts
-3. Examples
-4. Common Mistakes
-5. Practice Tips
+IMPORTANT: Structure your explanation using EXACTLY these Markdown section headings (copy them verbatim):
+
+## 📖 Simple Definition
+(A clear, concise definition)
+
+## 🔑 Key Concepts
+(Bullet points of the most important ideas)
+
+## 💡 Examples
+(Concrete, relatable examples)
+
+## ⚠️ Common Mistakes
+(What learners typically get wrong)
+
+## 🎯 Practice Tips
+(Actionable advice for the student to practice)
+
+Use Markdown formatting (bold, bullet lists, numbered lists) within each section to improve readability.
 """
-    
+
     try:
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
             temperature=0.7,
-            max_tokens=1000
+            max_tokens=1200
         )
-        
+
         return {
             "explanation": response.choices[0].message.content,
             "topic": request.topic,
             "grade_level": request.grade_level
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"OpenAI API Error: {str(e)}")
+
+
+@app.post("/api/explain/stream")
+async def explain_topic_stream(request: ExplanationRequest):
+    """Stream a detailed explanation of a topic via Server-Sent Events."""
+
+    if not client.api_key or client.api_key == "":
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured.")
+
+    detail_prompts = {
+        "simple": "Explain this in very simple terms, as if teaching a beginner. Use analogies and everyday examples.",
+        "medium": "Provide a clear explanation with examples and key points.",
+        "detailed": "Provide a comprehensive, in-depth explanation with examples, applications, and advanced concepts."
+    }
+
+    lang_instruction = ""
+    if request.language == "te":
+        lang_instruction = "IMPORTANT: Provide the entire explanation in Telugu language (తెలుగు). Use Telugu script.\n\n"
+
+    prompt = f"""{lang_instruction}{content_safety.SAFETY_GUARDRAIL}
+Explain the topic: {request.topic}
+
+Grade Level: {request.grade_level}
+Detail Level: {detail_prompts[request.detail_level]}
+
+IMPORTANT: Structure your explanation using EXACTLY these Markdown section headings (copy them verbatim):
+
+## 📖 Simple Definition
+(A clear, concise definition)
+
+## 🔑 Key Concepts
+(Bullet points of the most important ideas)
+
+## 💡 Examples
+(Concrete, relatable examples)
+
+## ⚠️ Common Mistakes
+(What learners typically get wrong)
+
+## 🎯 Practice Tips
+(Actionable advice for the student to practice)
+
+Use Markdown formatting (bold, bullet lists, numbered lists) within each section to improve readability.
+"""
+
+    # Safety check before streaming
+    safety_result = await content_safety.check_content_safety(request.topic, client)
+    if not safety_result["safe"]:
+        async def safety_gen():
+            msg = safety_result["message"].replace("\n", "\\n")
+            yield f"data: {msg}\n\n"
+            yield "data: [DONE]\n\n"
+        return StreamingResponse(safety_gen(), media_type="text/event-stream")
+
+    async def generate():
+        try:
+            stream = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.7,
+                max_tokens=1200,
+                stream=True,
+            )
+            for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    escaped = delta.replace("\n", "\\n")
+                    yield f"data: {escaped}\n\n"
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: [ERROR]:{str(e)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 
 @app.post("/api/practice")
